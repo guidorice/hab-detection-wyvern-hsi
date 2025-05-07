@@ -1,3 +1,13 @@
+.vscode/
+.DS_Store
+
+*.png
+*.tiff
+*.geotiff
+*.geojson
+*.xml
+*.qgz
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -172,3 +182,4 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+.copilot-codeGeneration-instructions.md
