@@ -5,6 +5,7 @@ version = "0.1.0"
 dependencies = [
     "dagster==1.11.5",
     "geopandas>=1.0.1",
+    "matplotlib>=3.9.4",
     "numpy>=2.0.2",
     "pillow>=11.3.0",
     "pystac-client>=0.8.3",

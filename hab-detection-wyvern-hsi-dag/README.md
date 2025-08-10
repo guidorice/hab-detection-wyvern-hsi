@@ -1,5 +1,9 @@
 # hab_detection_wyvern_hsi_dag
 
+## TODO
+
+Readme which references the jupyter notebook
+
 ## Getting started
 
 ### Installing dependencies
