@@ -27,6 +27,10 @@ EPSG_3857="EPSG:3857"
 Web-mercator CRS
 """
 
+WATER_THRESHOLD = 0.3
+NDCI_THRESHOLD = 0.3
+
+
 @asset
 def fetch_stac_item(stac_client: STACResource) -> Item:
     """
@@ -59,7 +63,8 @@ def nodata_value(fetch_stac_item: Item) -> float:
 
     with rio.open(cog_asset.href) as src:
         for i in range(0, 31):
-            assert src.nodatavals[i] == src.nodatavals[0]
+            if not src.nodatavals[i] == src.nodatavals[0]:
+                raise ValueError("Inconsistent nodatavals")
         return src.nodatavals[0]
 
 
@@ -74,8 +79,7 @@ def blue_r464_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]
     with rio.open(cog_asset.href) as src:
         band_blue_r464 = src.descriptions.index("Band_464")
         blue_r464 = src.read(band_blue_r464 + 1)
-        src_meta: dict[str, object] = src.meta.copy()
-        return (blue_r464, src_meta)
+        return (blue_r464, src.meta)
 
 
 @dg.asset
@@ -89,8 +93,7 @@ def green_r550_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]
     with rio.open(cog_asset.href) as src:
         band_green_r550 = src.descriptions.index("Band_550")
         green_r550 = src.read(band_green_r550 + 1)
-        src_meta: dict[str, object] = src.meta.copy()
-        return (green_r550, src_meta)
+        return (green_r550, src.meta)
 
 
 @dg.asset
@@ -103,8 +106,7 @@ def red_r650_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     with rio.open(cog_asset.href) as src:
         band_red_r650 = src.descriptions.index("Band_650")
         red_r650 = src.read(band_red_r650 + 1)
-        src_meta: dict[str, object] = src.meta.copy()
-        return (red_r650, src_meta)
+        return (red_r650, src.meta)
 
 
 @dg.asset
@@ -117,8 +119,7 @@ def red_r669_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     with rio.open(cog_asset.href) as src:
         band_red_r669 = src.descriptions.index("Band_669")
         red_r669 = src.read(band_red_r669 + 1)
-        src_meta: dict[str, object] = src.meta.copy()
-        return (red_r669, src_meta)
+        return (red_r669, src.meta)
 
 
 @dg.asset
@@ -131,8 +132,7 @@ def red_edge_r712_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, A
     with rio.open(cog_asset.href) as src:
         band_red_edge_r712 = src.descriptions.index("Band_712")
         red_edge_r712 = src.read(band_red_edge_r712 + 1)
-        src_meta: dict[str, object] = src.meta.copy()
-        return (red_edge_r712, src_meta)
+        return (red_edge_r712, src.meta)
 
 
 @dg.asset
@@ -145,8 +145,7 @@ def nir_r849_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     with rio.open(cog_asset.href) as src:
         band_nir_r849 = src.descriptions.index("Band_849")
         nir_r849 = src.read(band_nir_r849 + 1)
-        src_meta: dict[str, object] = src.meta.copy()
-        return (nir_r849, src_meta)
+        return (nir_r849, src.meta)
 
 
 @dg.asset
@@ -159,19 +158,27 @@ def rgb_preview_raster(
     Make visual RGB preview raster (EPSG:4326). Returns tuple of (Numpy ndarray, and
     raster metadata.)
     """
+    NODATA = 0
+
     (red_r650, _) = red_r650_raster
     (green_r550, _) = green_r550_raster
-    (blue_r464, src_meta) = blue_r464_raster
+    (blue_r464, meta) = blue_r464_raster
 
-    # Scale the RGB bands to 8-bit unsigned integer range
-    red_uint8 = scale_to_8bit(red_r650, 0)
-    green_uint8 = scale_to_8bit(green_r550, 0)
-    blue_uint8 = scale_to_8bit(blue_r464, 0)
+    # scale the RGB bands to 8-bit unsigned integer range [1, 255] (0 is reserved as nodata)
+    red_uint8 = scale_to_8bit(red_r650, NODATA)
+    green_uint8 = scale_to_8bit(green_r550, NODATA)
+    blue_uint8 = scale_to_8bit(blue_r464, NODATA)
 
-    # Stack the bands to create RGB image (np.stack returns a copy)
+    # stack the bands to create RGB image
     result_arr = np.stack([red_uint8, green_uint8, blue_uint8], axis=0)
 
-    return (result_arr, src_meta)
+    # reflect changes in our copy of the src metadata
+    meta.update({
+        "count": len(result_arr),
+        "dtype": str(result_arr.dtype),
+        "nodata": NODATA,
+    })
+    return (result_arr, meta)
 
 
 @dg.asset
@@ -194,25 +201,14 @@ def rgb_preview_geotiff(
     output_path = output_dir / f"{fetch_stac_item.id}-l1b-viz.tiff"
     output_path.unlink(missing_ok=True)
 
-    (result_arr, src_meta) = rgb_preview_raster
+    (result_arr, meta) = rgb_preview_raster
 
-    # re-use the metadata from the src, except update the datatype (uint8) and the nodata value (0).
-    dest_meta = src_meta.copy()
-    dest_meta = src_meta.copy()
-    dest_meta.update(
-        dict(
-            count=len(result_arr),
-            dtype=result_arr.dtype,
-            nodata=0,
-        )
-    )
-
-    with rio.open(output_path, "w", **dest_meta) as dst:
+    with rio.open(output_path, "w", **meta) as dst:
         dst.write(result_arr)
 
     return dg.MaterializeResult(
         metadata={
-            "crs": str(dest_meta["crs"]),
+            "crs": str(meta["crs"]),
             "dimensions": f"{result_arr.shape[1]} x {result_arr.shape[0]}",
             "dtype": str(result_arr.dtype),
             "file_size": file_size(output_path),
@@ -279,7 +275,7 @@ def ndwi_raster(
     """
     Calculate NDWI index raster.
     """
-    (green_r550, src_meta) = green_r550_raster
+    (green_r550, meta) = green_r550_raster
     (nir_r849, _) = nir_r849_raster
 
     # generate validity masks
@@ -296,7 +292,9 @@ def ndwi_raster(
         green_r550[valid_mask] + nir_r849_clamped[valid_mask]
     )
 
-    return (ndwi, src_meta)
+    # pass through the src metadata because no changes to the dtype or shape
+
+    return (ndwi, meta)
 
 
 @dg.asset
@@ -304,13 +302,16 @@ def water_mask_raster(
     ndwi_raster: tuple[np.ndarray, dict[str, Any]],
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
-    Make water mask raster from NDWI threshold value (0.3)
+    Make water mask raster from NDWI threshold value (0.3).
     """
-    (ndwi, src_meta) = ndwi_raster
-    water_threshold = 0.3
+    (ndwi, meta) = ndwi_raster
     water_mask = np.zeros_like(ndwi, dtype=bool)
-    water_mask = ndwi > water_threshold
-    return (water_mask, src_meta)
+    water_mask = ndwi > WATER_THRESHOLD
+
+    # reflect change in our copy of raster metadata
+    meta.update({"dtype": str(water_mask.dtype)})
+
+    return (water_mask, meta)
 
 
 @dg.asset
@@ -330,14 +331,14 @@ def water_mask_vector_geojson(
     output_path = output_dir / f"{fetch_stac_item.id}-l1b-water-mask.geojson"
     output_path.unlink(missing_ok=True)
 
-    (water_mask, src_meta) = water_mask_raster
+    (water_mask, meta) = water_mask_raster
 
     results = (
         {"properties": {"value": v}, "geometry": s}
         for s, v in shapes(
             water_mask.astype(np.uint8),
             mask=water_mask,
-            transform=src_meta["transform"],
+            transform=meta["transform"],
         )
     )
     geometries = [
@@ -345,7 +346,7 @@ def water_mask_vector_geojson(
         for result in results
         if result["properties"]["value"] == 1
     ]
-    gdf = gpd.GeoDataFrame(geometry=geometries, crs=src_meta["crs"])
+    gdf = gpd.GeoDataFrame(geometry=geometries, crs=meta["crs"])
     gdf.to_file(output_path, driver="GeoJSON")
 
     return dg.MaterializeResult(
@@ -366,6 +367,8 @@ def water_mask_geotiff(
     """
     Make geotiff files from water mask raster.
     """
+    # TODO TypeError: invalid dtype: 'bool'
+
     io_manager = context.resources.io_manager
     if hasattr(io_manager, "base_dir"):
         base_dir = Path(io_manager.base_dir)
@@ -377,29 +380,18 @@ def water_mask_geotiff(
     output_path = output_dir / f"{fetch_stac_item.id}-l1b-water-mask.tiff"
     output_path.unlink(missing_ok=True)
 
-    (water_mask, src_meta) = water_mask_raster
+    (water_mask, meta) = water_mask_raster
 
-    with rio.open(
-        output_path,
-        "w",
-        driver="GTiff",
-        height=water_mask.shape[0],
-        width=water_mask.shape[1],
-        count=1,
-        dtype="uint8",
-        crs=src_meta["crs"],
-        transform=src_meta["transform"],
-        compress="lzw",
-    ) as dst:
-        dst.write(water_mask.astype("uint8"), 1)
+    with rio.open(output_path, "w", **meta) as dst:
+        dst.write(water_mask)
 
     return dg.MaterializeResult(
         metadata={
-            "output_path": str(output_path),
+            "crs": str(meta["crs"]),
             "dimensions": f"{water_mask.shape[1]} x {water_mask.shape[0]}",
             "dtype": str(water_mask.dtype),
             "file_size": file_size(output_path),
-            "crs": str(src_meta["crs"]),
+            "output_path": str(output_path),
         }
     )
 
@@ -413,6 +405,7 @@ def water_mask_viz_geotiff(
     """
     Make Geotiff raster for visualization (3 bands RGB).
     """
+    NODATA = 0
     io_manager = context.resources.io_manager
     if hasattr(io_manager, "base_dir"):
         base_dir = Path(io_manager.base_dir)
@@ -424,7 +417,7 @@ def water_mask_viz_geotiff(
     output_path = output_dir / f"{fetch_stac_item.id}-l1b-water-mask-viz.tiff"
     output_path.unlink(missing_ok=True)
 
-    (water_mask, src_meta) = water_mask_raster
+    (water_mask, meta) = water_mask_raster
 
     water_mask_rgb = np.zeros(
         (3, water_mask.shape[0], water_mask.shape[1]), dtype=np.uint8
@@ -435,26 +428,20 @@ def water_mask_viz_geotiff(
     water_mask_rgb[1, water_mask] = 1
     water_mask_rgb[2, water_mask] = 255
 
-    # Write the RGB water mask to a Geotiff
-    with rio.open(
-        output_path,
-        "w",
-        driver="GTiff",
-        height=water_mask.shape[0],
-        width=water_mask.shape[1],
-        count=3,
-        dtype="uint8",
-        crs=src_meta["crs"],
-        transform=src_meta["transform"],
-        compress="lzw",
-        photometric="RGB",
-        nodata=0,
-    ) as dst:
+    # reflect change in our copy of the raster metadata
+    meta.update({
+        "dtype": str(water_mask_rgb.dtype),
+        "count": len(water_mask_rgb),
+        "nodata": NODATA,
+    })
+
+    # write the RGB water mask to a Geotiff
+    with rio.open(output_path, "w", **meta) as dst:
         dst.write(water_mask_rgb)
 
     return dg.MaterializeResult(
         metadata={
-            "crs": str(src_meta["crs"]),
+            "crs": str(meta["crs"]),
             "dimensions": f"{water_mask.shape[1]} x {water_mask.shape[0]}",
             "dtype": str(water_mask.dtype),
             "file_size": file_size(output_path),
@@ -523,7 +510,7 @@ def ndci_raster(
     """
     Make NDCI raster from red_edge, and dark red, water mask, and validity masks.
     """
-    (red_edge_r712, src_meta) = red_edge_r712_raster
+    (red_edge_r712, meta) = red_edge_r712_raster
     (red_r669, _) = red_r669_raster
     (water_mask, _) = water_mask_raster
 
@@ -541,7 +528,8 @@ def ndci_raster(
         red_edge_r712_clamped[valid_mask] + red_r669[valid_mask]
     )
 
-    return (ndci, src_meta)
+    # pass the raster metadata through because shape and dtype was not changed
+    return (ndci, meta)
 
 
 @dg.asset
@@ -553,6 +541,8 @@ def ndci_geotiff(
     """
     Make Geotiff from NDCI raster (EPSG: 4326).
     """
+    # TODO: ValueError: Source shape (9516, 6436) is inconsistent with given indexes 31
+
     io_manager = context.resources.io_manager
     if hasattr(io_manager, "base_dir"):
         base_dir = Path(io_manager.base_dir)
@@ -564,25 +554,14 @@ def ndci_geotiff(
     output_path = output_dir / f"{fetch_stac_item.id}-l1b-ndci.tiff"
     output_path.unlink(missing_ok=True)
 
-    (ndci, src_meta) = ndci_raster
+    (ndci, meta) = ndci_raster
 
-    with rio.open(
-        output_path,
-        "w",
-        driver="GTiff",
-        height=ndci.shape[0],
-        width=ndci.shape[1],
-        count=1,
-        dtype=ndci.dtype,
-        crs=src_meta["crs"],
-        transform=src_meta["transform"],
-        compress="lzw",
-    ) as dst:
-        dst.write(ndci, 1)
+    with rio.open(output_path, "w", **meta) as dst:
+        dst.write(ndci)
 
     return dg.MaterializeResult(
         metadata={
-            "crs": str(src_meta["crs"]),
+            "crs": str(meta["crs"]),
             "dimensions": f"{ndci.shape[1]} x {ndci.shape[0]}",
             "dtype": str(ndci.dtype),
             "file_size": file_size(output_path),
@@ -598,8 +577,11 @@ def ndci_viz_geotiff(
     ndci_raster: tuple[np.ndarray, dict[str, Any]],
 ) -> dg.MaterializeResult:
     """
-    Make Geotiff from NDCI raster, RGB visualization, web-ready (EPSG: 4326).
+    Make Geotiff from NDCI raster, RGB visualization, web-ready (EPSG: 4326). 
+    Uses the viridis colormap and applies threshold of 0.3.
     """
+    NODATA = 0
+
     io_manager = context.resources.io_manager
     if hasattr(io_manager, "base_dir"):
         base_dir = Path(io_manager.base_dir)
@@ -611,43 +593,37 @@ def ndci_viz_geotiff(
     output_path = output_dir / f"{fetch_stac_item.id}-l1b-ndci-viz.tiff"
     output_path.unlink(missing_ok=True)
 
-    (ndci, src_meta) = ndci_raster
+    (ndci, meta) = ndci_raster
 
-    # Normalize the NDCI values to the range [0, 1] for the colormap
+    # normalize the NDCI values to the range [0, 1] for the colormap
     ndci_normalized = np.full_like(ndci, np.nan)
     valid_ndci_mask = ~np.isnan(ndci)
-    ndci_min, ndci_max = -1, 0.3
+    ndci_min, ndci_max = -1, NDCI_THRESHOLD
     ndci_normalized[valid_ndci_mask] = (ndci[valid_ndci_mask] - ndci_min) / (
         ndci_max - ndci_min
     )
     ndci_normalized = np.clip(ndci_normalized, 0, 1)
 
-    # Map the normalized NDCI values to RGB using the viridis colormap
+    # map the normalized NDCI values to RGB using the viridis colormap
     viridis_cmap = matplotlib.colormaps["viridis"]  # type: ignore
-    ndci_rgb = np.full((3, ndci.shape[0], ndci.shape[1]), 0, dtype=np.uint8)
+    ndci_rgb = np.full((3, ndci.shape[0], ndci.shape[1]), NODATA, dtype=np.uint8)
     ndci_rgb[:, valid_ndci_mask] = (
         viridis_cmap(ndci_normalized[valid_ndci_mask])[:, :3] * 255
     ).T.astype(np.uint8)
 
-    with rio.open(
-        output_path,
-        "w",
-        driver="GTiff",
-        height=ndci.shape[0],
-        width=ndci.shape[1],
-        count=3,
-        dtype=str(ndci_rgb.dtype),
-        crs=src_meta["crs"],
-        transform=src_meta["transform"],
-        compress="lzw",
-        photometric="RGB",
-        nodata=0,
-    ) as dst:
+    # reflect changes in our copy the raster metadata
+    meta.update({
+        "dtype": str(ndci_rgb.dtype),
+        "count": len(ndci_rgb),
+        "nodata": NODATA,
+    })
+
+    with rio.open(output_path, "w", **meta) as dst:
         dst.write(ndci_rgb)
 
     return dg.MaterializeResult(
         metadata={
-            "crs": str(src_meta["crs"]),
+            "crs": str(meta["crs"]),
             "dimensions": f"{ndci.shape[1]} x {ndci.shape[0]}",
             "dtype": str(ndci.dtype),
             "file_size": file_size(output_path),
