@@ -32,7 +32,7 @@ NDCI_THRESHOLD = 0.3
 
 
 @asset
-def fetch_stac_item(_stac_client: STACResource) -> Item:
+def fetch_stac_item(stac_client: STACResource) -> Item:  # noqa: ARG001
     """
     Find a Wyvern HSI scene in cloud storage. Returns a STAC Item.
     """
