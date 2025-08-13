@@ -17,17 +17,17 @@ from .utils import STACResource, file_size, scale_to_8bit
 
 COG_ASSET_KEY = "Cloud optimized GeoTiff"
 
-EPSG_4326="EPSG:4326"
+EPSG_4326 = "EPSG:4326"
 """
 WGS84 (decimal degrees) CRS
 """
 
-EPSG_3857="EPSG:3857"
+EPSG_3857 = "EPSG:3857"
 """
 Web-mercator CRS
 """
 
-WATER_THRESHOLD = 0.3
+WATER_MASK_THRESHOLD = 0.3
 NDCI_THRESHOLD = 0.3
 
 
@@ -52,23 +52,6 @@ def fetch_stac_item(stac_client: STACResource) -> Item:
 
 
 @dg.asset
-def nodata_value(fetch_stac_item: Item) -> float:
-    """
-    Confirm all the bands have same nodata value, so we can just use a common variable for all
-    bands.
-    """
-    cog_asset = fetch_stac_item.assets.get(COG_ASSET_KEY)
-    if cog_asset is None:
-        raise ValueError("Cloud Optimized GeoTiff asset not found in STAC item.")
-
-    with rio.open(cog_asset.href) as src:
-        for i in range(0, 31):
-            if not src.nodatavals[i] == src.nodatavals[0]:
-                raise ValueError("Inconsistent nodatavals")
-        return src.nodatavals[0]
-
-
-@dg.asset
 def blue_r464_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Read band from cloud object storage (Blue 464nm for RGB preview). Returns tuple of (Numpy
@@ -78,10 +61,13 @@ def blue_r464_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]
 
     with rio.open(cog_asset.href) as src:
         band_blue_r464 = src.descriptions.index("Band_464")
+        nodata_val = src.nodatavals[band_blue_r464]
         blue_r464 = src.read(band_blue_r464 + 1)
         meta = src.meta.copy()
-        meta["count"] = 1
-        return (blue_r464, meta)
+
+    blue_r464[blue_r464 == nodata_val] = np.nan
+    meta["count"] = 1
+    return (blue_r464, meta)
 
 
 @dg.asset
@@ -94,10 +80,13 @@ def green_r550_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]
 
     with rio.open(cog_asset.href) as src:
         band_green_r550 = src.descriptions.index("Band_550")
+        nodata_val = src.nodatavals[band_green_r550]
         green_r550 = src.read(band_green_r550 + 1)
         meta = src.meta.copy()
-        meta["count"] = 1
-        return (green_r550, meta)
+
+    green_r550[green_r550 == nodata_val] = np.nan
+    meta["count"] = 1
+    return (green_r550, meta)
 
 
 @dg.asset
@@ -109,10 +98,13 @@ def red_r650_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     cog_asset = fetch_stac_item.assets[COG_ASSET_KEY]
     with rio.open(cog_asset.href) as src:
         band_red_r650 = src.descriptions.index("Band_650")
+        nodata_val = src.nodatavals[band_red_r650]
         red_r650 = src.read(band_red_r650 + 1)
         meta = src.meta.copy()
-        meta["count"] = 1
-        return (red_r650, meta)
+
+    red_r650[red_r650 == nodata_val] = np.nan
+    meta["count"] = 1
+    return (red_r650, meta)
 
 
 @dg.asset
@@ -124,10 +116,13 @@ def red_r669_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     cog_asset = fetch_stac_item.assets[COG_ASSET_KEY]
     with rio.open(cog_asset.href) as src:
         band_red_r669 = src.descriptions.index("Band_669")
+        nodata_val = src.nodatavals[band_red_r669]
         red_r669 = src.read(band_red_r669 + 1)
         meta = src.meta.copy()
-        meta["count"] = 1
-        return (red_r669, meta)
+
+    red_r669[red_r669 == nodata_val] = np.nan
+    meta["count"] = 1
+    return (red_r669, meta)
 
 
 @dg.asset
@@ -139,10 +134,13 @@ def red_edge_r712_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, A
     cog_asset = fetch_stac_item.assets[COG_ASSET_KEY]
     with rio.open(cog_asset.href) as src:
         band_red_edge_r712 = src.descriptions.index("Band_712")
+        nodata_val = src.nodatavals[band_red_edge_r712]
         red_edge_r712 = src.read(band_red_edge_r712 + 1)
         meta = src.meta.copy()
-        meta["count"] = 1
-        return (red_edge_r712, meta)
+
+    red_edge_r712[red_edge_r712 == nodata_val] = np.nan
+    meta["count"] = 1
+    return (red_edge_r712, meta)
 
 
 @dg.asset
@@ -154,10 +152,13 @@ def nir_r849_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     cog_asset = fetch_stac_item.assets[COG_ASSET_KEY]
     with rio.open(cog_asset.href) as src:
         band_nir_r849 = src.descriptions.index("Band_849")
+        nodata_val = src.nodatavals[band_nir_r849]
         nir_r849 = src.read(band_nir_r849 + 1)
         meta = src.meta.copy()
-        meta["count"] = 1
-        return (nir_r849, meta)
+
+    nir_r849[nir_r849 == nodata_val] = np.nan
+    meta["count"] = 1
+    return (nir_r849, meta)
 
 
 @dg.asset
@@ -171,16 +172,9 @@ def rgb_preview_raster(
     Make visual RGB preview raster (EPSG:4326). Returns tuple of (Numpy ndarray, and
     raster metadata.)
     """
-    NODATA = 0
-
     (red_r650, _) = red_r650_raster
     (green_r550, _) = green_r550_raster
     (blue_r464, meta) = blue_r464_raster
-
-    # Handle nodata values by setting them to 0 before scaling
-    red_r650 = np.where(red_r650 == nodata_value, 0, red_r650)
-    green_r550 = np.where(green_r550 == nodata_value, 0, green_r550)
-    blue_r464 = np.where(blue_r464 == nodata_value, 0, blue_r464)
 
     # scale the RGB bands to 8-bit unsigned integer range [1, 255] (0 is reserved as nodata)
     red_uint8 = scale_to_8bit(red_r650)
@@ -191,11 +185,13 @@ def rgb_preview_raster(
     result_arr = np.stack([red_uint8, green_uint8, blue_uint8], axis=0)
 
     # reflect changes in our copy of the src metadata
-    meta.update({
-        "count": len(result_arr),
-        "dtype": str(result_arr.dtype),
-        "nodata": NODATA,
-    })
+    meta.update(
+        {
+            "count": len(result_arr),
+            "dtype": str(result_arr.dtype),
+            "nodata": 0,
+        }
+    )
     return (result_arr, meta)
 
 
@@ -287,18 +283,15 @@ def rgb_preview_web_geotiff(
 def ndwi_raster(
     green_r550_raster: tuple[np.ndarray, dict[str, Any]],
     nir_r849_raster: tuple[np.ndarray, dict[str, Any]],
-    nodata_value: float,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
-    Calculate NDWI index raster.
+    Calculate NDWI index raster. Returns tuple of (Numpy ndarray, and raster metadata.)
     """
     (green_r550, meta) = green_r550_raster
     (nir_r849, _) = nir_r849_raster
 
     # generate validity masks
-    green_r550[green_r550 == nodata_value] = np.nan
     green_r550_valid_mask = ~np.isnan(green_r550)
-    nir_r849[nir_r849 == nodata_value] = np.nan
     nir_r849_valid_mask = ~np.isnan(nir_r849)
     valid_mask = green_r550_valid_mask & nir_r849_valid_mask
 
@@ -308,9 +301,6 @@ def ndwi_raster(
     ndwi[valid_mask] = (green_r550[valid_mask] - nir_r849_clamped[valid_mask]) / (
         green_r550[valid_mask] + nir_r849_clamped[valid_mask]
     )
-
-    # pass through the src metadata because no changes to the dtype or shape
-
     return (ndwi, meta)
 
 
@@ -319,11 +309,12 @@ def water_mask_raster(
     ndwi_raster: tuple[np.ndarray, dict[str, Any]],
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
-    Make water mask raster from NDWI threshold value (0.3).
+    Make water mask raster from NDWI threshold value (0.3). Returns tuple of (Numpy ndarray, and
+    raster metadata.)
     """
     (ndwi, meta) = ndwi_raster
     water_mask = np.zeros_like(ndwi, dtype=bool)
-    water_mask = ndwi > WATER_THRESHOLD
+    water_mask = ndwi > WATER_MASK_THRESHOLD
 
     # reflect change in our copy of raster metadata
     meta["dtype"] = str(water_mask.dtype)
@@ -424,7 +415,6 @@ def water_mask_viz_geotiff(
     """
     Make Geotiff raster for visualization (3 bands RGB).
     """
-    NODATA = 0
     io_manager = context.resources.io_manager
     if hasattr(io_manager, "base_dir"):
         base_dir = Path(io_manager.base_dir)
@@ -448,11 +438,13 @@ def water_mask_viz_geotiff(
     water_mask_rgb[2, water_mask] = 255
 
     # reflect change in our copy of the raster metadata
-    meta.update({
-        "dtype": str(water_mask_rgb.dtype),
-        "count": len(water_mask_rgb),
-        "nodata": NODATA,
-    })
+    meta.update(
+        {
+            "dtype": str(water_mask_rgb.dtype),
+            "count": len(water_mask_rgb),
+            "nodata": 0,
+        }
+    )
 
     # write the RGB water mask to a Geotiff
     with rio.open(output_path, "w", **meta) as dst:
@@ -474,7 +466,6 @@ def water_mask_viz_web_geotiff(
     context: dg.AssetExecutionContext,
     fetch_stac_item: Item,
 ) -> dg.MaterializeResult:
-
     io_manager = context.resources.io_manager
     if hasattr(io_manager, "base_dir"):
         base_dir = Path(io_manager.base_dir)
@@ -524,19 +515,17 @@ def ndci_raster(
     red_r669_raster: tuple[np.ndarray, dict[str, Any]],
     red_edge_r712_raster: tuple[np.ndarray, dict[str, Any]],
     water_mask_raster: tuple[np.ndarray, dict[str, Any]],
-    nodata_value: float,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Make NDCI raster from red_edge, and dark red, water mask, and validity masks.
+    Returns tuple of (Numpy ndarray, and raster metadata.)
     """
     (red_edge_r712, meta) = red_edge_r712_raster
     (red_r669, _) = red_r669_raster
     (water_mask, _) = water_mask_raster
 
     # calculate validity masks
-    red_r669[red_r669 == nodata_value] = np.nan
     red_r669_valid_mask = ~np.isnan(red_r669)
-    red_edge_r712[red_edge_r712 == nodata_value] = np.nan
     red_edge_r712_valid_mask = ~np.isnan(red_edge_r712)
 
     # calculate NDCI formula
@@ -547,7 +536,6 @@ def ndci_raster(
         red_edge_r712_clamped[valid_mask] + red_r669[valid_mask]
     )
 
-    # pass the raster metadata through because shape and dtype was not changed
     return (ndci, meta)
 
 
@@ -594,7 +582,7 @@ def ndci_viz_geotiff(
     ndci_raster: tuple[np.ndarray, dict[str, Any]],
 ) -> dg.MaterializeResult:
     """
-    Make Geotiff from NDCI raster, RGB visualization, web-ready (EPSG: 4326). 
+    Make Geotiff from NDCI raster, RGB visualization, web-ready (EPSG: 4326).
     Uses the viridis colormap and applies threshold of 0.3.
     """
     NODATA = 0
@@ -629,11 +617,13 @@ def ndci_viz_geotiff(
     ).T.astype(np.uint8)
 
     # reflect changes in our copy the raster metadata
-    meta.update({
-        "dtype": str(ndci_rgb.dtype),
-        "count": len(ndci_rgb),
-        "nodata": NODATA,
-    })
+    meta.update(
+        {
+            "dtype": str(ndci_rgb.dtype),
+            "count": len(ndci_rgb),
+            "nodata": NODATA,
+        }
+    )
 
     with rio.open(output_path, "w", **meta) as dst:
         dst.write(ndci_rgb)

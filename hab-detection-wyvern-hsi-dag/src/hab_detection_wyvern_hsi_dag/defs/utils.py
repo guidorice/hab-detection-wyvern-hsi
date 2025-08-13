@@ -41,11 +41,13 @@ def scale_to_8bit(arr: np.ndarray) -> np.ndarray:
     """
     # Create a copy to avoid modifying the input
     arr_copy = arr.copy()
+
     # Create a mask for valid values
     valid_mask = ~np.isnan(arr_copy)
+
     # Initialize output array with nodata value (0)
     output = np.zeros_like(arr_copy, dtype=np.uint8)
-    
+
     # Process only if we have valid data
     if np.any(valid_mask):
         # Calculate percentiles only on valid data
