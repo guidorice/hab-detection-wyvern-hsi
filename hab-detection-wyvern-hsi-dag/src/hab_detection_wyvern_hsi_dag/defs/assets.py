@@ -36,7 +36,7 @@ def fetch_stac_item(stac_client: STACResource) -> Item:
     """
     Find a Wyvern HSI scene in cloud storage. Returns a STAC Item.
     """
-    # TODO: configure the spatio-temporal search from the environment or pipeline args.
+    # TODO: configure the spatio-temporal search parameters from the environment or pipeline args.
 
     # TODO: implement actual search logic. The STAC is a static catalog which does not confirm to
     # ITEM_SEARCH. You can use client.get_collections() and collection.get_items() to iterate, and
@@ -79,7 +79,9 @@ def blue_r464_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]
     with rio.open(cog_asset.href) as src:
         band_blue_r464 = src.descriptions.index("Band_464")
         blue_r464 = src.read(band_blue_r464 + 1)
-        return (blue_r464, src.meta)
+        meta = src.meta.copy()
+        meta["count"] = 1
+        return (blue_r464, meta)
 
 
 @dg.asset
@@ -93,7 +95,9 @@ def green_r550_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]
     with rio.open(cog_asset.href) as src:
         band_green_r550 = src.descriptions.index("Band_550")
         green_r550 = src.read(band_green_r550 + 1)
-        return (green_r550, src.meta)
+        meta = src.meta.copy()
+        meta["count"] = 1
+        return (green_r550, meta)
 
 
 @dg.asset
@@ -106,7 +110,9 @@ def red_r650_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     with rio.open(cog_asset.href) as src:
         band_red_r650 = src.descriptions.index("Band_650")
         red_r650 = src.read(band_red_r650 + 1)
-        return (red_r650, src.meta)
+        meta = src.meta.copy()
+        meta["count"] = 1
+        return (red_r650, meta)
 
 
 @dg.asset
@@ -119,7 +125,9 @@ def red_r669_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     with rio.open(cog_asset.href) as src:
         band_red_r669 = src.descriptions.index("Band_669")
         red_r669 = src.read(band_red_r669 + 1)
-        return (red_r669, src.meta)
+        meta = src.meta.copy()
+        meta["count"] = 1
+        return (red_r669, meta)
 
 
 @dg.asset
@@ -132,7 +140,9 @@ def red_edge_r712_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, A
     with rio.open(cog_asset.href) as src:
         band_red_edge_r712 = src.descriptions.index("Band_712")
         red_edge_r712 = src.read(band_red_edge_r712 + 1)
-        return (red_edge_r712, src.meta)
+        meta = src.meta.copy()
+        meta["count"] = 1
+        return (red_edge_r712, meta)
 
 
 @dg.asset
@@ -145,7 +155,9 @@ def nir_r849_raster(fetch_stac_item: Item) -> tuple[np.ndarray, dict[str, Any]]:
     with rio.open(cog_asset.href) as src:
         band_nir_r849 = src.descriptions.index("Band_849")
         nir_r849 = src.read(band_nir_r849 + 1)
-        return (nir_r849, src.meta)
+        meta = src.meta.copy()
+        meta["count"] = 1
+        return (nir_r849, meta)
 
 
 @dg.asset
@@ -153,6 +165,7 @@ def rgb_preview_raster(
     red_r650_raster: tuple[np.ndarray, dict[str, Any]],
     green_r550_raster: tuple[np.ndarray, dict[str, Any]],
     blue_r464_raster: tuple[np.ndarray, dict[str, Any]],
+    nodata_value: float,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Make visual RGB preview raster (EPSG:4326). Returns tuple of (Numpy ndarray, and
@@ -164,12 +177,17 @@ def rgb_preview_raster(
     (green_r550, _) = green_r550_raster
     (blue_r464, meta) = blue_r464_raster
 
-    # scale the RGB bands to 8-bit unsigned integer range [1, 255] (0 is reserved as nodata)
-    red_uint8 = scale_to_8bit(red_r650, NODATA)
-    green_uint8 = scale_to_8bit(green_r550, NODATA)
-    blue_uint8 = scale_to_8bit(blue_r464, NODATA)
+    # Handle nodata values by setting them to 0 before scaling
+    red_r650 = np.where(red_r650 == nodata_value, 0, red_r650)
+    green_r550 = np.where(green_r550 == nodata_value, 0, green_r550)
+    blue_r464 = np.where(blue_r464 == nodata_value, 0, blue_r464)
 
-    # stack the bands to create RGB image
+    # scale the RGB bands to 8-bit unsigned integer range [1, 255] (0 is reserved as nodata)
+    red_uint8 = scale_to_8bit(red_r650)
+    green_uint8 = scale_to_8bit(green_r550)
+    blue_uint8 = scale_to_8bit(blue_r464)
+
+    # stack the bands to create RGB image in rasterio format (bands, height, width)
     result_arr = np.stack([red_uint8, green_uint8, blue_uint8], axis=0)
 
     # reflect changes in our copy of the src metadata
@@ -196,7 +214,6 @@ def rgb_preview_geotiff(
     else:
         base_dir = Path(tempfile.gettempdir())
     output_dir = base_dir / "outputs"
-    output_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{fetch_stac_item.id}-l1b-viz.tiff"
     output_path.unlink(missing_ok=True)
@@ -234,7 +251,7 @@ def rgb_preview_web_geotiff(
     output_path.unlink(missing_ok=True)
 
     # Use gdalwarp to re-project the GeoTIFF to EPSG:3857 for web visualization
-    # TODO: optionally port this to use rasterio and remove the gdal CLI dependency.
+    # TODO: port this to use rasterio and remove the gdal CLI dependency.
 
     input_path = output_dir / f"{fetch_stac_item.id}-l1b-viz.tiff"
 
@@ -309,7 +326,8 @@ def water_mask_raster(
     water_mask = ndwi > WATER_THRESHOLD
 
     # reflect change in our copy of raster metadata
-    meta.update({"dtype": str(water_mask.dtype)})
+    meta["dtype"] = str(water_mask.dtype)
+    del meta["nodata"]
 
     return (water_mask, meta)
 
@@ -367,8 +385,6 @@ def water_mask_geotiff(
     """
     Make geotiff files from water mask raster.
     """
-    # TODO TypeError: invalid dtype: 'bool'
-
     io_manager = context.resources.io_manager
     if hasattr(io_manager, "base_dir"):
         base_dir = Path(io_manager.base_dir)
@@ -382,8 +398,11 @@ def water_mask_geotiff(
 
     (water_mask, meta) = water_mask_raster
 
+    # reflect actual data type required for gdal in our copy of the raster metadata
+    meta["dtype"] = "uint8"
+
     with rio.open(output_path, "w", **meta) as dst:
-        dst.write(water_mask)
+        dst.write(water_mask, 1)
 
     return dg.MaterializeResult(
         metadata={
@@ -541,8 +560,6 @@ def ndci_geotiff(
     """
     Make Geotiff from NDCI raster (EPSG: 4326).
     """
-    # TODO: ValueError: Source shape (9516, 6436) is inconsistent with given indexes 31
-
     io_manager = context.resources.io_manager
     if hasattr(io_manager, "base_dir"):
         base_dir = Path(io_manager.base_dir)
@@ -557,7 +574,7 @@ def ndci_geotiff(
     (ndci, meta) = ndci_raster
 
     with rio.open(output_path, "w", **meta) as dst:
-        dst.write(ndci)
+        dst.write(ndci, 1)
 
     return dg.MaterializeResult(
         metadata={

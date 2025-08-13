@@ -1,6 +1,4 @@
-import dagster as dg
-
-from dagster import ConfigurableResource, FilesystemIOManager
+from dagster import ConfigurableResource
 from pystac_client import Client
 
 class STACResource(ConfigurableResource):
@@ -12,11 +10,3 @@ class STACResource(ConfigurableResource):
     def get_client(self):
         return Client.open(self.catalog_url)
 
-@dg.definitions
-def resources():
-    return dg.Definitions(
-        resources={
-            "stac_client": STACResource(),
-            "io_manager": FilesystemIOManager(base_dir="/tmp/dagster/hab-detection-wyvern-hsi-dag")
-        }
-    )

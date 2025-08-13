@@ -18,6 +18,9 @@ dependencies = [
 dev = [
     "dagster-webserver",
     "dagster-dg-cli",
+    "ruff>=0.12.8",
+    "pyright>=1.1.403",
+    "bandit>=1.8.6",
 ]
 
 [build-system]
