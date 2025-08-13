@@ -1,0 +1,60 @@
+lint.select = [ "PLW", "E", "F", "B", "I", "N", "UP", "ANN", "S", "BLE", "FBT", "A", "COM", "C4", "PIE", "PT", "RET", "SIM", "ARG", "ERA"]
+lint.fixable = ["ALL"]
+lint.unfixable = []
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+]
+
+line-length = 100
+target-version = "py313"
+
+# ignore rules handled by Ruff formatter
+# - line-too-long (E501)
+# - missing-trailing-comma (COM812)
+lint.ignore = ["E501", "COM812"]
+
+# Allow unused variables when underscore-prefixed.
+lint.dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[lint.isort]
+known-first-party = ["aff"]
+
+[lint.flake8-quotes]
+docstring-quotes = "double"
+inline-quotes = "double"
+
+[lint.flake8-annotations]
+suppress-none-returning = true
+
+[lint.pydocstyle]
+convention = "google"
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+ # Allow assert statements in tests
+[lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]

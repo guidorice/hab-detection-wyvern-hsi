@@ -10,9 +10,10 @@ class STACResource(ConfigurableResource):
     """
     Dagster resource which wraps pystac_client.
     """
+
     catalog_url: str
 
-    def get_client(self):
+    def get_client(self) -> Client:
         return Client.open(self.catalog_url)
 
 
@@ -53,12 +54,12 @@ def scale_to_8bit(arr: np.ndarray) -> np.ndarray:
         # Calculate percentiles only on valid data
         min_val = np.nanpercentile(arr_copy, 2)  # 2nd percentile
         max_val = np.nanpercentile(arr_copy, 98)  # 98th percentile
-        
+
         # Apply scaling only to valid data
         if max_val > min_val:  # Avoid division by zero
             # Scale to 1-255 range (0 is reserved for nodata)
             scaled_valid = (arr_copy[valid_mask] - min_val) / (max_val - min_val) * 254 + 1
             scaled_valid = np.clip(scaled_valid, 1, 255)
             output[valid_mask] = scaled_valid.astype(np.uint8)
-    
+
     return output

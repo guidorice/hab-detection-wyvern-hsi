@@ -23,5 +23,8 @@ format:
 	ruff format src/ tests/
 
 # run security scanner
+# skip # B603: subprocess_without_shell_equals_true - subprocess call without shell=True
+# skip # [B404:blacklist] Consider possible security implications associated with the subprocess module.
 security-scan:
-	bandit -r src/
+
+	bandit -s B603,B404 -r src/

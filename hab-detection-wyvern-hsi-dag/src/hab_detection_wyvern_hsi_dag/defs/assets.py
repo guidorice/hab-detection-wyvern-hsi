@@ -32,7 +32,7 @@ NDCI_THRESHOLD = 0.3
 
 
 @asset
-def fetch_stac_item(stac_client: STACResource) -> Item:
+def fetch_stac_item(stac_client: STACResource) -> Item:  # noqa: ARG001
     """
     Find a Wyvern HSI scene in cloud storage. Returns a STAC Item.
     """
@@ -166,7 +166,6 @@ def rgb_preview_raster(
     red_r650_raster: tuple[np.ndarray, dict[str, Any]],
     green_r550_raster: tuple[np.ndarray, dict[str, Any]],
     blue_r464_raster: tuple[np.ndarray, dict[str, Any]],
-    nodata_value: float,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Make visual RGB preview raster (EPSG:4326). Returns tuple of (Numpy ndarray, and
@@ -268,7 +267,7 @@ def rgb_preview_web_geotiff(
         str(input_path),
         str(output_path),
     ]
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True)  # noqa: S603
 
     return dg.MaterializeResult(
         metadata={
@@ -351,9 +350,7 @@ def water_mask_vector_geojson(
         )
     )
     geometries = [
-        shape(result["geometry"])
-        for result in results
-        if result["properties"]["value"] == 1
+        shape(result["geometry"]) for result in results if result["properties"]["value"] == 1
     ]
     gdf = gpd.GeoDataFrame(geometry=geometries, crs=meta["crs"])
     gdf.to_file(output_path, driver="GeoJSON")
@@ -428,9 +425,7 @@ def water_mask_viz_geotiff(
 
     (water_mask, meta) = water_mask_raster
 
-    water_mask_rgb = np.zeros(
-        (3, water_mask.shape[0], water_mask.shape[1]), dtype=np.uint8
-    )
+    water_mask_rgb = np.zeros((3, water_mask.shape[0], water_mask.shape[1]), dtype=np.uint8)
 
     # Set water pixels to blue-ish (1,1,255). Note: don't use 0 because that's the nodata value.
     water_mask_rgb[0, water_mask] = 1
@@ -498,7 +493,7 @@ def water_mask_viz_web_geotiff(
         str(input_path),
         str(output_path),
     ]
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True)  # noqa: S603
 
     return dg.MaterializeResult(
         metadata={
@@ -511,7 +506,6 @@ def water_mask_viz_web_geotiff(
 
 @dg.asset
 def ndci_raster(
-    context: dg.AssetExecutionContext,
     red_r669_raster: tuple[np.ndarray, dict[str, Any]],
     red_edge_r712_raster: tuple[np.ndarray, dict[str, Any]],
     water_mask_raster: tuple[np.ndarray, dict[str, Any]],
@@ -585,7 +579,7 @@ def ndci_viz_geotiff(
     Make Geotiff from NDCI raster, RGB visualization, web-ready (EPSG: 4326).
     Uses the viridis colormap and applies threshold of 0.3.
     """
-    NODATA = 0
+    output_nodata = 0
 
     io_manager = context.resources.io_manager
     if hasattr(io_manager, "base_dir"):
@@ -604,14 +598,12 @@ def ndci_viz_geotiff(
     ndci_normalized = np.full_like(ndci, np.nan)
     valid_ndci_mask = ~np.isnan(ndci)
     ndci_min, ndci_max = -1, NDCI_THRESHOLD
-    ndci_normalized[valid_ndci_mask] = (ndci[valid_ndci_mask] - ndci_min) / (
-        ndci_max - ndci_min
-    )
+    ndci_normalized[valid_ndci_mask] = (ndci[valid_ndci_mask] - ndci_min) / (ndci_max - ndci_min)
     ndci_normalized = np.clip(ndci_normalized, 0, 1)
 
     # map the normalized NDCI values to RGB using the viridis colormap
     viridis_cmap = matplotlib.colormaps["viridis"]  # type: ignore
-    ndci_rgb = np.full((3, ndci.shape[0], ndci.shape[1]), NODATA, dtype=np.uint8)
+    ndci_rgb = np.full((3, ndci.shape[0], ndci.shape[1]), output_nodata, dtype=np.uint8)
     ndci_rgb[:, valid_ndci_mask] = (
         viridis_cmap(ndci_normalized[valid_ndci_mask])[:, :3] * 255
     ).T.astype(np.uint8)
@@ -621,7 +613,7 @@ def ndci_viz_geotiff(
         {
             "dtype": str(ndci_rgb.dtype),
             "count": len(ndci_rgb),
-            "nodata": NODATA,
+            "nodata": output_nodata,
         }
     )
 
@@ -679,7 +671,7 @@ def ndci_viz_web_geotiff(
         str(input_path),
         str(output_path),
     ]
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True)  # noqa: S603
 
     return dg.MaterializeResult(
         metadata={
