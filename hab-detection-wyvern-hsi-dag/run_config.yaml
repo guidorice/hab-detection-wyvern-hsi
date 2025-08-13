@@ -1,4 +1,0 @@
-resources:
-  stac_client:
-    config:
-      catalog_url: "https://planetarycomputer.microsoft.com/api/stac/v1"
